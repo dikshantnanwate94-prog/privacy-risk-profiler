@@ -6,6 +6,8 @@ import os
 # This looks at the current file's directory, goes up one level, and adds 'backend'
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'backend')))
 
+if 'scan_history' not in st.session_state:
+    st.session_state['scan_history'] = []
 # 2. Now you can import your class normally
 try:
     from breach_checker import BreachChecker
@@ -29,6 +31,13 @@ if page == 'Quick Breach Check':
                 raw_data = checker.check_email_breaches(email)
 
             breaches = raw_data[0] if isinstance(raw_data, list) and len(raw_data) > 0 and isinstance(raw_data[0], list) else raw_data
+            result_summary = {
+                "email": email,
+                "count": len(breaches),
+                "status": "Vulnerable" if breaches else "Safe"
+            }
+            # Save to history
+            st.session_state['scan_history'].append(result_summary)
             if breaches:
                 st.error(f'⚠️ Found {len(breaches)} breaches for: {email}')
                 st.markdown("### **List of Breaches:**")
@@ -58,8 +67,13 @@ if page == 'Quick Breach Check':
 
 # History
 elif page == 'History':
-    st.header('Scan History')
-    st.write('User scan history will be listed here.')
+    st.header('📜 Scan History')
+    if st.session_state['scan_history']:
+        for item in reversed(st.session_state['scan_history']):
+            color = "red" if item['status'] == "Vulnerable" else "green"
+            st.markdown(f"- **{item['email']}**: :{color}[{item['status']}] ({item['count']} breaches found)")
+    else:
+        st.write("No scans performed in this session.")
 
 # Settings
 elif page == 'Settings':
