@@ -1,47 +1,47 @@
 import requests
+import hashlib
 
 class BreachChecker:
-    BASE_URL = 'https://haveibeenpwned.com/api/v3/'
-
-    def __init__(self):
-        pass
+    # Using XposedOrNot's free community API
+    BASE_URL = 'https://api.xposedornot.com/v1/'
+    PASS_URL = 'https://passwords.xposedornot.com/v1/pass/anon/'
 
     def check_email_breaches(self, email):
-        """Check if an email has been compromised in data breaches."""
-        response = requests.get(f'{self.BASE_URL}breachedaccount/{email}', headers={'User-Agent': 'BreachChecker'})
-        if response.status_code == 200:
-            return response.json()
-        elif response.status_code == 404:
-            return []  # No breaches found
-        else:
-            response.raise_for_status()
+        """Check if an email has been compromised using XposedOrNot."""
+        try:
+            response = requests.get(f'{self.BASE_URL}check-email/{email}')
+            if response.status_code == 200:
+                # Returns a list of breach names under the 'breaches' key
+                return response.json().get('breaches', [])
+            elif response.status_code == 404:
+                return []  # No breaches found
+            else:
+                return f"Error: {response.status_code}"
+        except Exception as e:
+            return f"Connection Error: {e}"
 
     def check_password_strength(self, password):
-        """Check if a password has been exposed in data breaches."""
-        hash_password = self._hash_password(password)
-        response = requests.get(f'{self.BASE_URL}pwnedpasswords/range/{hash_password[:5]}')
-        if response.status_code == 200:
-            return self._parse_password_response(response.text, hash_password)
-        else:
-            response.raise_for_status()
+        """Check if a password has been exposed using k-anonymity (KECCAK-512)."""
+        # XposedOrNot uses SHA3-keccak-512 for password anonymity
+        from sha3 import keccak_512 # You may need to pip install pysha3
+        
+        hash_obj = keccak_512()
+        hash_obj.update(password.encode('utf-8'))
+        full_hash = hash_obj.hexdigest()
+        
+        # We only send the first 10 characters to the API (k-anonymity)
+        prefix = full_hash[:10]
+        
+        try:
+            response = requests.get(f'{self.PASS_URL}{prefix}')
+            if response.status_code == 200:
+                data = response.json()
+                # If prefix matches, it returns the exposure count
+                return data.get('SearchPassAnon', {}).get('count', 0)
+            return 0
+        except Exception as e:
+            return f"Error: {e}"
 
-    def get_breach_details(self, breach_name):
-        """Get details about a specific breach."""
-        response = requests.get(f'{self.BASE_URL}breaches/{breach_name}', headers={'User-Agent': 'BreachChecker'})
-        if response.status_code == 200:
-            return response.json()
-        else:
-            response.raise_for_status()
-
-    def _hash_password(self, password):
-        """Hash the password using SHA-1."""
-        import hashlib
-        return hashlib.sha1(password.encode('utf-8')).hexdigest()
-
-    def _parse_password_response(self, response, hash_password):
-        """Parse password response to check exposure count."""
-        for line in response.splitlines():
-            parts = line.split(':')
-            if parts[0].lower() == hash_password[5:]:
-                return int(parts[1])  # Return the count of exposures
-        return 0  # No exposure found
+# --- Example Usage ---
+# checker = BreachChecker()
+# print(checker.check_email_breaches("test@example.com"))
